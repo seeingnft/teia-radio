@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Teia Radio</title>
+<meta name="description" content="A listening instrument tuned to the audio OBJKTs living on Teia.">
+<meta name="theme-color" content="#F4F2EC">
+<style>
+:root{
+  --bg:#F4F2EC; --panel:#FBFAF6; --inset:#ECEAE2; --ink:#1A1A1A;
+  --dim:#888780; --line:#D8D6D1; --line2:#C4C2BB; --acc:#D85A30;
+  --wave-off:#C9C7C0;
+}
+[data-theme="live"]{
+  --bg:#141414; --panel:#191919; --inset:#0A0A0A; --ink:#DEDEDE;
+  --dim:#777; --line:#2A2A2A; --line2:#3A3A3A; --acc:#E24B4A;
+  --wave-off:#3A3A3A;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0; padding:0;}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:13px; line-height:1.5;
+  transition:background .25s,color .25s;
+  display:flex; justify-content:center; min-height:100vh;
+}
+button{font-family:inherit; cursor:pointer;}
+.app{width:100%; max-width:430px; padding:14px 14px 40px;}
+
+.statusbar{display:flex; justify-content:space-between; align-items:center;
+  padding:4px 4px 14px; font-size:11px; letter-spacing:.16em;}
+.statusbar .brand{font-weight:700;}
+.onair{display:flex; align-items:center; gap:6px; color:var(--dim);}
+.onair.live{color:var(--acc);}
+.onair .dot{width:7px; height:7px; border-radius:50%; background:currentColor;}
+.onair.live .dot{animation:pulse 1.1s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+.mode{background:none; border:1px solid var(--line2); color:var(--dim);
+  border-radius:6px; padding:3px 9px; font-size:11px; letter-spacing:.1em;}
+
+.screen{background:var(--inset); border:1px solid var(--line); border-radius:14px;
+  padding:14px; display:flex; gap:14px; min-height:104px;}
+.cover{width:74px; height:74px; flex:none; border-radius:6px; border:1px solid var(--line2);
+  background:var(--panel); object-fit:cover; display:block;}
+.coverph{width:74px; height:74px; flex:none; border-radius:6px; border:1px solid var(--line2);
+  display:flex; align-items:center; justify-content:center; color:var(--dim); font-size:11px;}
+.nowmeta{min-width:0; flex:1;}
+.livebadge{font-size:11px; letter-spacing:.1em; color:var(--acc);}
+.title{font-size:15px; letter-spacing:.04em; margin-top:3px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.artist{font-size:11px; color:var(--dim); margin-top:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.artist a{color:inherit;}
+.meterrow{display:flex; align-items:center; gap:6px; margin-top:9px; font-size:11px; color:var(--dim);}
+.meter{display:flex; align-items:flex-end; gap:1px; height:13px; flex:1; max-width:120px;}
+.meter span{width:2px; background:var(--wave-off); display:block; transition:background .08s;}
+.meter span.on{background:var(--ink);}
+.db{margin-left:auto; color:var(--ink);}
+
+.wavebox{padding:16px 2px 0;}
+.wave{display:block; width:100%; height:64px; cursor:pointer;}
+.timerow{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); padding:2px 2px 0;}
+.timerow .cur{color:var(--ink);}
+
+.tabs{display:flex; gap:8px; padding:14px 2px;}
+.tab{border:1px solid var(--line2); background:none; color:var(--dim);
+  border-radius:7px; padding:6px 14px; font-size:11px; letter-spacing:.12em;}
+.tab.act{border-color:var(--ink); color:var(--ink);}
+.searchwrap{margin-left:auto; display:flex; gap:6px;}
+.searchwrap input{border:1px solid var(--line2); background:var(--panel); color:var(--ink);
+  border-radius:7px; padding:6px 9px; font-size:12px; width:104px; font-family:inherit; outline:none;}
+.searchwrap input::placeholder{color:var(--dim);}
+
+.deck{background:var(--panel); border:1px solid var(--line); border-radius:20px;
+  padding:18px 16px; display:flex; align-items:center; gap:16px;}
+.sidebtns{display:flex; flex-direction:column; gap:14px;}
+.rbtn{width:48px; height:48px; border-radius:50%; background:var(--inset);
+  border:1px solid var(--line2); color:var(--ink);
+  display:flex; align-items:center; justify-content:center; font-size:17px;}
+.rbtn:active{transform:scale(.95);}
+.rbtn.heart{color:var(--acc);}
+.wheel{flex:1; aspect-ratio:1; max-width:184px; margin:0 auto; border-radius:50%;
+  background:var(--inset); border:1px solid var(--line2); position:relative;}
+.wbtn{position:absolute; background:none; border:none; color:var(--ink);
+  font-size:17px; padding:10px; line-height:1;}
+.wbtn:active{color:var(--acc);}
+.wbtn.prev{left:6px; top:50%; transform:translateY(-50%);}
+.wbtn.next{right:6px; top:50%; transform:translateY(-50%);}
+.wbtn.up{top:6px; left:50%; transform:translateX(-50%); color:var(--dim);}
+.wbtn.down{bottom:6px; left:50%; transform:translateX(-50%); color:var(--dim);}
+.playbtn{position:absolute; inset:0; margin:auto; width:68px; height:68px; border-radius:50%;
+  background:var(--panel); border:1px solid var(--line2); color:var(--ink);
+  display:flex; align-items:center; justify-content:center; font-size:21px;}
+.playbtn:active{transform:scale(.96);}
+
+.listhead{display:flex; justify-content:space-between; align-items:baseline;
+  padding:22px 4px 8px; font-size:11px; letter-spacing:.14em; color:var(--dim);}
+.tracklist{border-top:1.5px solid var(--ink);}
+.trk{display:flex; align-items:center; gap:10px; padding:10px 4px;
+  border-bottom:1px solid var(--line); cursor:pointer;}
+.trk .ix{width:34px; flex:none; color:var(--dim); font-size:11px;}
+.trk .nm{flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.trk .by{color:var(--dim); font-size:11px; flex:none; max-width:110px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.trk.now{color:var(--acc);}
+.trk.now .by,.trk.now .ix{color:var(--acc);}
+.more{display:block; margin:18px auto 0; border:1px solid var(--ink); background:none;
+  color:var(--ink); padding:9px 26px; font-size:11px; letter-spacing:.14em; border-radius:7px;}
+.note{padding:16px 4px; color:var(--dim); font-size:12px;}
+.note.err{color:var(--acc);}
+.foot{padding:26px 4px 0; font-size:11px; color:var(--dim); letter-spacing:.04em;}
+.foot a{color:inherit;}
+@media (prefers-reduced-motion:reduce){.onair.live .dot{animation:none;}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="statusbar">
+    <span class="brand">TEIA&nbsp;RADIO</span>
+    <span class="onair" id="onair"><span class="dot"></span><span id="onairTxt">STANDBY</span></span>
+    <button class="mode" id="modeBtn">LIVE&nbsp;MODE</button>
+  </div>
+
+  <div class="screen">
+    <span class="coverph" id="coverph">objkt</span>
+    <img class="cover" id="cover" alt="" style="display:none">
+    <div class="nowmeta">
+      <span class="livebadge" id="badge">&#9679; TUNED</span>
+      <div class="title" id="nowTitle">awaiting transmission</div>
+      <div class="artist" id="nowArtist">select a track below</div>
+      <div class="meterrow">
+        <span>L</span><span class="meter" id="meter"></span><span>R</span>
+        <span class="db" id="db">&ndash;&ndash;dB</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="wavebox">
+    <svg class="wave" id="wave" viewBox="0 0 400 64" preserveAspectRatio="none"></svg>
+    <div class="timerow"><span class="cur" id="tCur">0:00</span><span id="tDur">&ndash;:&ndash;&ndash;</span></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab act" id="tabLatest">LATEST</button>
+    <button class="tab" id="tabPop">COLLECTED</button>
+    <span class="searchwrap">
+      <input id="q" placeholder="search" enterkeyhint="search">
+    </span>
+  </div>
+
+  <div class="deck">
+    <div class="sidebtns">
+      <button class="rbtn" id="stopBtn" aria-label="Stop">&#9632;</button>
+      <button class="rbtn heart" id="heartBtn" aria-label="Collect on Teia">&#9825;</button>
+    </div>
+    <div class="wheel">
+      <button class="wbtn up" id="upBtn" aria-label="Scroll up">&#9650;</button>
+      <button class="wbtn down" id="downBtn" aria-label="Scroll down">&#9660;</button>
+      <button class="wbtn prev" id="prevBtn" aria-label="Previous">&#9198;</button>
+      <button class="wbtn next" id="nextBtn" aria-label="Next">&#9197;</button>
+      <button class="playbtn" id="playBtn" aria-label="Play or pause">&#9654;</button>
+    </div>
+  </div>
+
+  <div class="listhead"><span id="listLabel">FREQUENCY BAND &mdash; LATEST</span><span id="listCount"></span></div>
+  <div class="tracklist" id="list"></div>
+  <div class="note" id="status">tuning indexer&hellip;</div>
+  <button class="more" id="moreBtn" style="display:none">LOAD MORE</button>
+
+  <div class="foot">
+    a community listening instrument for <a href="https://teia.art" target="_blank" rel="noreferrer">teia.art</a>
+    &middot; data: teztok &middot; restricted accounts filtered per teia governance
+  </div>
+</div>
+
+<audio id="audio" preload="auto"></audio>
+
+<script>
+"use strict";
+var API = "https://teztok.teia.art/v1/graphql";
+var FA2 = "KT1RJ6PbjHpwc3M5rw5s2Nbmefwbuwbdxton";
+var RESTRICTED = "https://raw.githubusercontent.com/teia-community/teia-report/main/restricted.json";
+var GATEWAYS = ["https://ipfs.io/ipfs/","https://dweb.link/ipfs/","https://gateway.pinata.cloud/ipfs/"];
+var PAGE = 30;
+
+var state = {
+  tab:"latest", search:"", offset:0, tracks:[], done:false, loading:false,
+  cur:null, gwIdx:0, restricted:null, meterTimer:null
+};
+
+var $ = function(id){ return document.getElementById(id); };
+var audio = $("audio");
+
+function esc(s){ var d=document.createElement("div"); d.textContent=s==null?"":String(s); return d.innerHTML; }
+function shortAddr(a){ return a ? a.slice(0,5)+"\u2026"+a.slice(-4) : ""; }
+function artistName(t){ return (t.artist_profile && t.artist_profile.name) || shortAddr(t.artist_address); }
+function cid(uri){ return uri ? uri.replace("ipfs://","") : null; }
+function fmt(s){ if(!isFinite(s)) return "\u2013:\u2013\u2013"; var m=Math.floor(s/60), x=Math.floor(s%60); return m+":"+(x<10?"0":"")+x; }
+
+function gql(tab, search, offset){
+  var conds = 'fa2_address: {_eq: "'+FA2+'"}, mime_type: {_like: "audio/%"}, editions: {_gt: 0}';
+  if(search){ conds += ', name: {_ilike: "%'+search.replace(/["\\\\]/g,"")+'%"}'; }
+  var order = tab==="popular" ? "{sales_count: desc}" : "{minted_at: desc}";
+  return "{ tokens(where: {"+conds+"}, order_by: "+order+", limit: "+PAGE+", offset: "+offset+") {"+
+    " token_id name artist_address artist_profile { name } artifact_uri display_uri thumbnail_uri"+
+    " mime_type editions sales_count minted_at } }";
+}
+
+fetch(RESTRICTED).then(function(r){return r.json();}).then(function(d){
+  state.restricted = new Set(Array.isArray(d)?d:Object.keys(d));
+  renderList();
+}).catch(function(){ state.restricted = new Set(); });
+
+function load(append){
+  state.loading = true;
+  $("status").textContent = "tuning indexer\u2026"; $("status").className="note";
+  fetch(API, {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({query: gql(state.tab, state.search, state.offset)})})
+  .then(function(r){return r.json();})
+  .then(function(j){
+    if(j.errors) throw new Error(j.errors[0].message);
+    var batch = j.data.tokens.filter(function(t){return t.artifact_uri;});
+    state.done = batch.length < PAGE;
+    state.tracks = append ? state.tracks.concat(batch) : batch;
+    state.loading = false;
+    $("status").textContent = "";
+    renderList();
+  })
+  .catch(function(e){
+    state.loading = false;
+    $("status").textContent = "signal lost: "+e.message; $("status").className="note err";
+  });
+}
+
+function visibleTracks(){
+  if(!state.restricted) return state.tracks;
+  return state.tracks.filter(function(t){ return !state.restricted.has(t.artist_address); });
+}
+
+function renderList(){
+  var v = visibleTracks();
+  var html = "";
+  for(var i=0;i<v.length;i++){
+    var t = v[i];
+    var now = state.cur && state.cur.token_id === t.token_id;
+    html += '<div class="trk'+(now?" now":"")+'" data-id="'+t.token_id+'">'+
+      '<span class="ix">'+(now?"\u25B8":String(i+1).padStart(2,"0"))+'</span>'+
+      '<span class="nm">'+esc(t.name||("untitled #"+t.token_id))+'</span>'+
+      '<span class="by">'+esc(artistName(t))+'</span></div>';
+  }
+  $("list").innerHTML = html;
+  $("listCount").textContent = v.length ? v.length+" SIGNALS" : "";
+  $("moreBtn").style.display = (!state.done && v.length) ? "block" : "none";
+  if(!v.length && !state.loading && !$("status").textContent){
+    $("status").textContent = "no audio works found on this band.";
+  }
+  var rows = $("list").querySelectorAll(".trk");
+  for(var k=0;k<rows.length;k++){
+    rows[k].onclick = (function(id){ return function(){
+      var t = visibleTracks().find(function(x){return x.token_id===id;});
+      if(state.cur && state.cur.token_id===id){ togglePlay(); } else if(t){ playTrack(t); }
+    };})(rows[k].getAttribute("data-id"));
+  }
+}
+
+function gatewayUrl(uri, gw){ return GATEWAYS[gw] + cid(uri); }
+
+function playTrack(t){
+  state.cur = t; state.gwIdx = 0;
+  audio.src = gatewayUrl(t.artifact_uri, 0);
+  audio.play().catch(function(){});
+  updateNow(); drawWave(); renderList(); updateMediaSession();
+}
+
+audio.addEventListener("error", function(){
+  if(!state.cur) return;
+  if(state.gwIdx < GATEWAYS.length-1){
+    state.gwIdx++;
+    var pos = audio.currentTime;
+    audio.src = gatewayUrl(state.cur.artifact_uri, state.gwIdx);
+    audio.play().then(function(){ if(pos>1) audio.currentTime = pos; }).catch(function(){});
+  } else {
+    step(1);
+  }
+});
+
+function updateNow(){
+  var t = state.cur;
+  if(!t) return;
+  $("nowTitle").textContent = t.name || "untitled #"+t.token_id;
+  $("nowArtist").innerHTML = esc(artistName(t)) +
+    ' &middot; <a href="https://teia.art/objkt/'+t.token_id+'" target="_blank" rel="noreferrer">OBJKT #'+esc(t.token_id)+'</a>';
+  $("badge").innerHTML = "&#9679; LIVE";
+  var thumb = t.display_uri || t.thumbnail_uri;
+  if(thumb){
+    $("cover").src = GATEWAYS[0] + cid(thumb);
+    $("cover").style.display = "block"; $("coverph").style.display = "none";
+    $("cover").onerror = function(){ this.style.display="none"; $("coverph").style.display="flex"; };
+  } else {
+    $("cover").style.display = "none"; $("coverph").style.display = "flex";
+  }
+}
+
+function seededBars(seed, n){
+  var bars = [], x = seed||1;
+  for(var i=0;i<n;i++){
+    x = (x*1103515245+12345) % 2147483648;
+    bars.push(6 + (x%100)/100*22);
+  }
+  return bars;
+}
+var BAR_N = 80;
+var barsCache = null;
+
+function drawWave(){
+  var svg = $("wave");
+  var seed = state.cur ? parseInt(state.cur.token_id,10) : 7;
+  barsCache = seededBars(seed, BAR_N);
+  paintWave(0);
+}
+function paintWave(frac){
+  if(!barsCache) return;
+  var svg = $("wave"), w = 400, mid = 32, html = "";
+  var playedUntil = Math.floor(frac*BAR_N);
+  for(var i=0;i<BAR_N;i++){
+    var x = (i+0.5)*(w/BAR_N);
+    var h = barsCache[i];
+    var on = i < playedUntil;
+    html += '<line x1="'+x+'" y1="'+(mid-h)+'" x2="'+x+'" y2="'+(mid+h)+
+      '" stroke="'+(on?"var(--ink)":"var(--wave-off)")+'" stroke-width="2.4"/>';
+  }
+  if(state.cur){
+    var px = frac*w;
+    html += '<line x1="'+px+'" y1="2" x2="'+px+'" y2="62" stroke="var(--acc)" stroke-width="2"/>';
+  }
+  svg.innerHTML = html;
+}
+drawWave();
+
+$("wave").addEventListener("click", function(e){
+  if(!state.cur || !isFinite(audio.duration)) return;
+  var r = this.getBoundingClientRect();
+  audio.currentTime = ((e.clientX - r.left)/r.width) * audio.duration;
+});
+
+audio.addEventListener("timeupdate", function(){
+  $("tCur").textContent = fmt(audio.currentTime);
+  if(isFinite(audio.duration)){
+    $("tDur").textContent = fmt(audio.duration);
+    paintWave(audio.currentTime/audio.duration);
+  }
+});
+audio.addEventListener("ended", function(){ step(1); });
+audio.addEventListener("play", setPlaying);
+audio.addEventListener("pause", setPaused);
+
+function setPlaying(){
+  $("playBtn").innerHTML = "&#10074;&#10074;";
+  $("onair").className = "onair live"; $("onairTxt").textContent = "ON AIR";
+  startMeter();
+}
+function setPaused(){
+  $("playBtn").innerHTML = "&#9654;";
+  $("onair").className = "onair"; $("onairTxt").textContent = "STANDBY";
+  stopMeter();
+}
+
+function togglePlay(){
+  if(!state.cur){ var v = visibleTracks(); if(v.length) playTrack(v[0]); return; }
+  if(audio.paused) audio.play(); else audio.pause();
+}
+function step(dir){
+  var v = visibleTracks();
+  if(!v.length) return;
+  if(!state.cur){ playTrack(v[0]); return; }
+  var i = v.findIndex(function(t){return t.token_id===state.cur.token_id;});
+  var nx = v[i+dir];
+  if(nx) playTrack(nx);
+  else if(dir===1 && !state.done){ $("moreBtn").click(); }
+}
+
+var meterEl = $("meter");
+(function(){ var h=""; for(var i=0;i<26;i++){ h+='<span style="height:'+(5+(i%4)*3)+'px"></span>'; } meterEl.innerHTML=h; })();
+function startMeter(){
+  stopMeter();
+  state.meterTimer = setInterval(function(){
+    var lvl = 10 + Math.floor(Math.random()*14);
+    var sp = meterEl.children;
+    for(var i=0;i<sp.length;i++){ sp[i].className = i<lvl ? "on":""; }
+    $("db").textContent = "-"+(3+Math.floor(Math.random()*9))+"dB";
+  }, 120);
+}
+function stopMeter(){
+  if(state.meterTimer) clearInterval(state.meterTimer);
+  var sp = meterEl.children;
+  for(var i=0;i<sp.length;i++){ sp[i].className=""; }
+}
+
+function updateMediaSession(){
+  if(!("mediaSession" in navigator) || !state.cur) return;
+  var t = state.cur;
+  var art = [];
+  var thumb = t.display_uri || t.thumbnail_uri;
+  if(thumb) art.push({src: GATEWAYS[0]+cid(thumb), sizes:"512x512"});
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: t.name || "untitled #"+t.token_id,
+    artist: artistName(t),
+    album: "Teia Radio",
+    artwork: art
+  });
+  navigator.mediaSession.setActionHandler("play", function(){ audio.play(); });
+  navigator.mediaSession.setActionHandler("pause", function(){ audio.pause(); });
+  navigator.mediaSession.setActionHandler("previoustrack", function(){ step(-1); });
+  navigator.mediaSession.setActionHandler("nexttrack", function(){ step(1); });
+}
+
+$("playBtn").onclick = togglePlay;
+$("prevBtn").onclick = function(){ step(-1); };
+$("nextBtn").onclick = function(){ step(1); };
+$("stopBtn").onclick = function(){ audio.pause(); audio.currentTime = 0; paintWave(0); };
+$("heartBtn").onclick = function(){
+  if(state.cur) window.open("https://teia.art/objkt/"+state.cur.token_id, "_blank");
+};
+$("upBtn").onclick = function(){ window.scrollBy({top:-260, behavior:"smooth"}); };
+$("downBtn").onclick = function(){ window.scrollBy({top:260, behavior:"smooth"}); };
+
+function setTab(tab){
+  state.tab = tab; state.offset = 0; state.done = false;
+  $("tabLatest").className = "tab"+(tab==="latest"?" act":"");
+  $("tabPop").className = "tab"+(tab==="popular"?" act":"");
+  $("listLabel").textContent = "FREQUENCY BAND \u2014 "+(tab==="latest"?"LATEST":"MOST COLLECTED");
+  load(false);
+}
+$("tabLatest").onclick = function(){ setTab("latest"); };
+$("tabPop").onclick = function(){ setTab("popular"); };
+$("q").addEventListener("keydown", function(e){
+  if(e.key==="Enter"){ state.search=this.value.trim(); state.offset=0; load(false); }
+});
+$("moreBtn").onclick = function(){
+  state.offset += PAGE; load(true);
+};
+
+$("modeBtn").onclick = function(){
+  var live = document.documentElement.getAttribute("data-theme")==="live";
+  document.documentElement.setAttribute("data-theme", live?"":"live");
+  this.textContent = live ? "LIVE MODE" : "DAY MODE";
+  document.querySelector('meta[name="theme-color"]').content = live ? "#F4F2EC" : "#141414";
+  try{ localStorage.setItem("teia-radio-theme", live?"":"live"); }catch(e){}
+};
+try{
+  if(localStorage.getItem("teia-radio-theme")==="live"){ $("modeBtn").click(); }
+}catch(e){}
+
+load(false);
+</script>
+</body>
+</html>
