@@ -100,6 +100,16 @@ button{font-family:inherit; cursor:pointer;}
 
 .vizbox{position:relative; margin-top:14px; height:150px; border:1px solid var(--line);
   border-radius:14px; background:var(--inset); overflow:hidden;}
+.stationbar{display:none; gap:6px; margin-top:14px; padding-bottom:2px;
+  overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+.stationbar::-webkit-scrollbar{display:none;}
+.stationbar.show{display:flex;}
+.stbtn{flex:none; border:1px solid var(--line2); background:none; color:var(--dim);
+  border-radius:6px; padding:5px 10px; font-size:10px; letter-spacing:.06em;
+  white-space:nowrap; font-family:inherit;}
+.stbtn b{color:var(--ink); font-weight:600;}
+.stbtn.act{border-color:var(--sig); color:var(--sig);}
+.stbtn.act b{color:var(--sig);}
 .vizbox canvas{display:block; width:100%; height:100%;}
 .vizlabel{position:absolute; top:9px; left:12px; font-size:10px; letter-spacing:.16em;
   color:var(--dim); pointer-events:none;}
@@ -175,6 +185,7 @@ button{font-family:inherit; cursor:pointer;}
     </div>
   </div>
 
+  <div class="stationbar" id="stationbar"></div>
   <div class="vizbox" id="vizbox">
     <canvas id="viz"></canvas>
     <div class="vizlabel" id="vizLabel">SPECTRUM</div>
@@ -422,8 +433,14 @@ $("stopBtn").onclick = function(){ audio.pause(); audio.currentTime = 0; paintWa
 $("heartBtn").onclick = function(){
   if(state.cur) window.open("https://teia.art/objkt/"+state.cur.token_id, "_blank");
 };
-$("upBtn").onclick = function(){ window.scrollBy({top:-260, behavior:"smooth"}); };
-$("downBtn").onclick = function(){ window.scrollBy({top:260, behavior:"smooth"}); };
+$("upBtn").onclick = function(){
+  if(VZ.mode==="graph"){ selectStation(VZ.stationIdx-1); }
+  else window.scrollBy({top:-260, behavior:"smooth"});
+};
+$("downBtn").onclick = function(){
+  if(VZ.mode==="graph"){ selectStation(VZ.stationIdx+1); }
+  else window.scrollBy({top:260, behavior:"smooth"});
+};
 
 function setTab(tab){
   state.tab = tab; state.offset = 0; state.done = false;
@@ -468,6 +485,7 @@ var VZ = {
   canvas:null, ctx:null, dpr:1, w:0, h:0,
   actx:null, analyser:null, srcNode:null, freq:null,
   raf:null, mode:"spectrum",          // "spectrum" (green bars) | "graph" (star map)
+  stationIdx:0,
   realOK:false, zeroRun:0, fellBack:false,
   station:null, nodes:[], links:[], starPhase:[],
   level:0                              // smoothed 0..1 amplitude for graph pulse
@@ -571,18 +589,6 @@ function drawBars(spec){
 }
 
 /* ---- GRAPH: star map ---- */
-function pickStation(){
-  // default = largest station (#0); if current artist belongs to a station, use that
-  var def = GRAPH.st[0], i, j;
-  if(state.cur && state.cur.artist_address){
-    for(i=0;i<GRAPH.st.length;i++){
-      var nodes=GRAPH.st[i].N;
-      for(j=0;j<nodes.length;j++){ if(nodes[j][0]===state.cur.artist_address) return GRAPH.st[i]; }
-    }
-  }
-  return def;
-}
-
 function layoutStation(){
   var s=VZ.station; if(!s) return;
   var W=VZ.w, H=VZ.h, N=s.N, L=s.L, byId={};
@@ -686,20 +692,58 @@ function buildStationQueue(s){
   });
 }
 
-function enterGraph(){
-  VZ.station = pickStation();
-  VZ.mode="graph";
-  $("vizbox").classList.add("graph");
+function stationIndexForCurrent(){
+  // largest station (#0) by default; if current artist is in a station, that one
+  if(state.cur && state.cur.artist_address){
+    for(var i=0;i<GRAPH.st.length;i++){
+      var nodes=GRAPH.st[i].N;
+      for(var j=0;j<nodes.length;j++){ if(nodes[j][0]===state.cur.artist_address) return i; }
+    }
+  }
+  return 0; // GRAPH.st is sorted largest-first
+}
+
+function renderStationBar(){
+  var bar=$("stationbar"), html="";
+  for(var i=0;i<GRAPH.st.length;i++){
+    var s=GRAPH.st[i], act=(i===VZ.stationIdx);
+    html+='<button class="stbtn'+(act?" act":"")+'" data-si="'+i+'">'+
+      esc(s.l)+' &nbsp;<b>'+s.s+'</b></button>';
+  }
+  bar.innerHTML=html;
+  var btns=bar.querySelectorAll(".stbtn");
+  for(var k=0;k<btns.length;k++){
+    btns[k].onclick=(function(idx){ return function(){ selectStation(idx); }; })(+btns[k].getAttribute("data-si"));
+  }
+  // scroll active into view
+  var a=bar.querySelector(".stbtn.act");
+  if(a) a.scrollIntoView({inline:"center", block:"nearest", behavior:"smooth"});
+}
+
+function selectStation(idx){
+  if(idx<0) idx=GRAPH.st.length-1;
+  if(idx>=GRAPH.st.length) idx=0;
+  VZ.stationIdx=idx;
+  VZ.station=GRAPH.st[idx];
   $("vizLabel").textContent = "COLLECTIVE \u2014 "+VZ.station.l;
   $("vizSrc").textContent = VZ.station.s+" creators \u00b7 "+VZ.station.L.length+" mutual links";
-  vzResize(); layoutStation();
-  // queue switches to this collective
+  layoutStation();
   state.graphTracks = buildStationQueue(VZ.station);
   $("listLabel").textContent = "COLLECTIVE \u2014 "+VZ.station.l.toUpperCase();
+  renderStationBar();
   renderList();
+}
+
+function enterGraph(){
+  VZ.mode="graph";
+  $("vizbox").classList.add("graph");
+  $("stationbar").classList.add("show");
+  vzResize();
+  selectStation(stationIndexForCurrent());
 }
 function exitGraph(){
   VZ.mode="spectrum"; $("vizbox").classList.remove("graph");
+  $("stationbar").classList.remove("show");
   $("vizLabel").textContent="SPECTRUM"; $("vizSrc").textContent="";
   vzResize();
 }
