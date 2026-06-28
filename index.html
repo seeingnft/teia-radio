@@ -185,7 +185,17 @@ button{font-family:inherit; cursor:pointer;}
   color:var(--dim); pointer-events:none;}
 .vizsrc{position:absolute; bottom:8px; right:12px; font-size:9px; letter-spacing:.1em;
   color:var(--dim); pointer-events:none;}
-.vizbox.graph{height:240px; cursor:crosshair;}
+.vizbox.graph{height:240px;}
+.vizbox.graph #viz{cursor:grab;}
+.vizbox.graph #viz:active{cursor:grabbing;}
+.vizctl{position:absolute; right:10px; bottom:10px; display:none; flex-direction:column; gap:5px;}
+.vizbox.graph .vizctl{display:flex;}
+.zbtn{width:28px; height:28px; border-radius:6px; border:1px solid var(--line2);
+  color:var(--ink); background:linear-gradient(180deg,var(--btn-top),var(--btn-bot));
+  box-shadow:0 1px 2px var(--lo), inset 0 1px 0 var(--hi);
+  font-size:15px; line-height:1; display:flex; align-items:center; justify-content:center;
+  font-family:inherit; transition:box-shadow .08s, transform .08s;}
+.zbtn:active{transform:translateY(1px); box-shadow:inset 0 2px 3px var(--lo), inset 0 -1px 0 var(--hi);}
 .tracklist{border-top:1.5px solid var(--ink);}
 .trk{display:flex; align-items:center; gap:10px; padding:10px 4px;
   border-bottom:1px solid var(--line); cursor:pointer;}
@@ -265,6 +275,11 @@ button{font-family:inherit; cursor:pointer;}
     <canvas id="viz"></canvas>
     <div class="vizlabel" id="vizLabel">SPECTRUM</div>
     <div class="vizsrc" id="vizSrc"></div>
+    <div class="vizctl" id="vizctl">
+      <button class="zbtn" id="zoomIn" aria-label="Zoom in">+</button>
+      <button class="zbtn" id="zoomOut" aria-label="Zoom out">&minus;</button>
+      <button class="zbtn" id="zoomReset" aria-label="Reset view">&#9678;</button>
+    </div>
   </div>
 
   <div class="listhead"><span id="listLabel">FREQUENCY BAND &mdash; LATEST</span><span id="listCount"></span></div>
@@ -561,6 +576,7 @@ var VZ = {
   actx:null, analyser:null, srcNode:null, freq:null,
   raf:null, mode:"spectrum",          // "spectrum" (green bars) | "graph" (star map)
   stationIdx:0,
+  zoom:1, pan:{x:0,y:0}, dragging:false, dragStart:null, moved:false,
   realOK:false, zeroRun:0, fellBack:false,
   station:null, nodes:[], links:[], starPhase:[],
   level:0                              // smoothed 0..1 amplitude for graph pulse
@@ -580,6 +596,9 @@ function vzInit(){
   VZ.canvas = $("viz"); VZ.ctx = VZ.canvas.getContext("2d");
   vzResize();
   window.addEventListener("resize", vzResize);
+  $("zoomIn").onclick = function(){ vizZoomBtn(1); };
+  $("zoomOut").onclick = function(){ vizZoomBtn(-1); };
+  $("zoomReset").onclick = function(){ vizResetView(); };
   vzLoop();
 }
 
@@ -700,38 +719,54 @@ function drawStars(spec){
   var ctx=VZ.ctx, P=VZ.nodes, L=VZ.links;
   if(!P||!P.length) return;
   var sig=cssVar("--sig"), t=performance.now()/1000;
-  // pulse: all points blink together with the same audio level (as requested)
   var beat = 0.35 + VZ.level*1.6;          // shared amplitude-driven brightness
+  var dark = document.documentElement.getAttribute("data-theme")==="live";
+
+  ctx.save();
+  ctx.translate(VZ.pan.x, VZ.pan.y);
+  ctx.scale(VZ.zoom, VZ.zoom);
+
   // links
   for(var i=0;i<L.length;i++){
     var A=VZ.byId[L[i][0]], B=VZ.byId[L[i][1]];
     ctx.strokeStyle=sig; ctx.globalAlpha=0.10+0.22*VZ.level;
-    ctx.lineWidth=0.6+Math.min(2,L[i][2])*0.3;
+    ctx.lineWidth=(0.6+Math.min(2,L[i][2])*0.3)/VZ.zoom;
     ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y); ctx.stroke();
   }
   ctx.globalAlpha=1;
   // nodes
   for(var k=0;k<P.length;k++){
     var p=P[k];
-    var twinkle = 0.55 + 0.45*Math.sin(t*1.4 + VZ.starPhase[k]); // base star shimmer
+    var twinkle = 0.55 + 0.45*Math.sin(t*1.4 + VZ.starPhase[k]);
     var bright = Math.min(1, twinkle*0.5 + beat*0.7);
     var r = 2.2 + Math.sqrt(p.tr)*0.7;
-    // glow
     var g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*4);
     g.addColorStop(0, hexA(sig, 0.5*bright));
     g.addColorStop(1, hexA(sig, 0));
     ctx.fillStyle=g;
     ctx.beginPath(); ctx.arc(p.x,p.y,r*4,0,6.2832); ctx.fill();
-    // core
     ctx.fillStyle=hexA(sig, 0.5+0.5*bright);
     ctx.beginPath(); ctx.arc(p.x,p.y,r,0,6.2832); ctx.fill();
-    // label for larger nodes
-    if(p.tr>=4){
-      ctx.fillStyle=hexA(cssVar("--ink"),0.55);
-      ctx.font='9px ui-monospace,monospace';
-      ctx.fillText(p.name.slice(0,14), p.x+r+3, p.y+3);
-    }
   }
+  // labels — crisp pass, font scales inversely so it stays readable at any zoom
+  var fs = Math.max(10, 11/VZ.zoom*Math.min(VZ.zoom,1.4)); // gentle: bigger when zoomed in
+  ctx.font='600 '+(11/VZ.zoom)+'px ui-monospace,SFMono-Regular,Menlo,monospace';
+  ctx.textBaseline='middle'; ctx.lineJoin='round';
+  // show more labels as you zoom in (less crowding at high zoom)
+  var labelThresh = VZ.zoom>=2.2 ? 1 : (VZ.zoom>=1.5 ? 3 : 6);
+  for(var m=0;m<P.length;m++){
+    var q=P[m];
+    if(q.tr<labelThresh) continue;
+    var rr = 2.2 + Math.sqrt(q.tr)*0.7;
+    var lx = q.x+rr+4/VZ.zoom, ly = q.y;
+    var label = q.name.length>16 ? q.name.slice(0,15)+'\u2026' : q.name;
+    ctx.lineWidth=4/VZ.zoom;
+    ctx.strokeStyle = dark ? 'rgba(6,6,6,0.95)' : 'rgba(248,246,240,0.96)';
+    ctx.strokeText(label, lx, ly);
+    ctx.fillStyle = dark ? '#F2EFE8' : '#141210';
+    ctx.fillText(label, lx, ly);
+  }
+  ctx.restore();
 }
 
 function hexA(hex, a){
@@ -740,17 +775,62 @@ function hexA(hex, a){
   return 'rgba('+r+','+g+','+b+','+a+')';
 }
 
-// click a star → switch queue to that creator
-$("viz").addEventListener("click", function(e){
+// pointer interaction: drag to pan, click (no drag) to select a star
+function vizPointFromEvent(e){
+  var r = $("viz").getBoundingClientRect();
+  var cx = (e.touches?e.touches[0].clientX:e.clientX) - r.left;
+  var cy = (e.touches?e.touches[0].clientY:e.clientY) - r.top;
+  return {cx:cx, cy:cy,
+    // inverse transform to graph space
+    gx:(cx - VZ.pan.x)/VZ.zoom, gy:(cy - VZ.pan.y)/VZ.zoom};
+}
+$("viz").addEventListener("mousedown", function(e){
+  if(VZ.mode!=="graph") return;
+  VZ.dragging=true; VZ.moved=false;
+  var pt=vizPointFromEvent(e); VZ.dragStart={x:e.clientX, y:e.clientY, px:VZ.pan.x, py:VZ.pan.y};
+});
+window.addEventListener("mousemove", function(e){
+  if(!VZ.dragging) return;
+  var dx=e.clientX-VZ.dragStart.x, dy=e.clientY-VZ.dragStart.y;
+  if(Math.abs(dx)>3||Math.abs(dy)>3) VZ.moved=true;
+  VZ.pan.x = VZ.dragStart.px + dx;
+  VZ.pan.y = VZ.dragStart.py + dy;
+});
+window.addEventListener("mouseup", function(e){
+  if(!VZ.dragging) return;
+  VZ.dragging=false;
+  if(VZ.moved) return;            // it was a drag, not a click
+  // treat as click: hit-test in graph space
   if(VZ.mode!=="graph" || !VZ.nodes.length) return;
-  var r=this.getBoundingClientRect();
-  var mx=(e.clientX-r.left), my=(e.clientY-r.top), best=null, bd=1e9;
+  var pt=vizPointFromEvent(e), best=null, bd=1e9;
   VZ.nodes.forEach(function(p){
-    var d=(p.x-mx)*(p.x-mx)+(p.y-my)*(p.y-my);
+    var d=(p.x-pt.gx)*(p.x-pt.gx)+(p.y-pt.gy)*(p.y-pt.gy);
     if(d<bd){bd=d;best=p;}
   });
-  if(best && bd< 26*26){ enterCreator(best.id); }
+  var tol=(22/VZ.zoom); if(best && bd < tol*tol){ enterCreator(best.id); }
 });
+// wheel zoom centered on cursor
+$("viz").addEventListener("wheel", function(e){
+  if(VZ.mode!=="graph") return;
+  e.preventDefault();
+  var pt=vizPointFromEvent(e);
+  var factor = e.deltaY<0 ? 1.12 : 1/1.12;
+  vizZoomAt(pt.cx, pt.cy, factor);
+}, {passive:false});
+
+function vizZoomAt(cx, cy, factor){
+  var nz = Math.max(0.5, Math.min(6, VZ.zoom*factor));
+  factor = nz/VZ.zoom;
+  // keep the point under cursor fixed
+  VZ.pan.x = cx - (cx - VZ.pan.x)*factor;
+  VZ.pan.y = cy - (cy - VZ.pan.y)*factor;
+  VZ.zoom = nz;
+}
+function vizZoomBtn(inOut){
+  var r=$("viz").getBoundingClientRect();
+  vizZoomAt(r.width/2, r.height/2, inOut>0 ? 1.3 : 1/1.3);
+}
+function vizResetView(){ VZ.zoom=1; VZ.pan={x:0,y:0}; }
 
 /* ===== GRAPH MODE: queue from station, tab wiring ===== */
 function buildStationQueue(s){
@@ -800,6 +880,7 @@ function selectStation(idx){
   if(idx>=GRAPH.st.length) idx=0;
   VZ.stationIdx=idx;
   VZ.station=GRAPH.st[idx];
+  vizResetView();
   $("vizLabel").textContent = "COLLECTIVE \u2014 "+VZ.station.l;
   $("vizSrc").textContent = VZ.station.s+" creators \u00b7 "+VZ.station.L.length+" mutual links";
   layoutStation();
